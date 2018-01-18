@@ -152,19 +152,32 @@ void CudaPointHashGridSearcher3::build(const CudaArrayView1<float4>& points) {
                                  _endIndexTable.data()));
 }
 
-CudaArrayView1<size_t> CudaPointHashGridSearcher3::keys() const {
+float CudaPointHashGridSearcher3::gridSpacing() const { return _gridSpacing; }
+
+Size3 CudaPointHashGridSearcher3::resolution() const {
+    return Size3{static_cast<size_t>(_resolution.x),
+                 static_cast<size_t>(_resolution.y),
+                 static_cast<size_t>(_resolution.z)};
+}
+
+const CudaArrayView1<float4> CudaPointHashGridSearcher3::sortedPoints() const {
+    return _points.view();
+}
+
+const CudaArrayView1<size_t> CudaPointHashGridSearcher3::keys() const {
     return _keys.view();
 }
 
-CudaArrayView1<size_t> CudaPointHashGridSearcher3::startIndexTable() const {
+const CudaArrayView1<size_t> CudaPointHashGridSearcher3::startIndexTable()
+    const {
     return _startIndexTable.view();
 }
 
-CudaArrayView1<size_t> CudaPointHashGridSearcher3::endIndexTable() const {
+const CudaArrayView1<size_t> CudaPointHashGridSearcher3::endIndexTable() const {
     return _endIndexTable.view();
 }
 
-CudaArrayView1<size_t> CudaPointHashGridSearcher3::sortedIndices() const {
+const CudaArrayView1<size_t> CudaPointHashGridSearcher3::sortedIndices() const {
     return _sortedIndices.view();
 }
 

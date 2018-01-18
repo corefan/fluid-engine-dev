@@ -25,18 +25,19 @@ struct ForEachCallback {
     int* isValid;
     int* visited;
 
-    JET_CUDA_HOST_DEVICE void operator()(size_t i, float4 pt) {
-        visited[i] = 1;
+    JET_CUDA_HOST_DEVICE void operator()(size_t i, float4 o, size_t j,
+                                         float4 pt) {
+        visited[j] = 1;
 
-        if (i == 1) {
-            isValid[i] = 0;
+        if (j == 1) {
+            isValid[j] = 0;
             return;
         }
 
-        if (i == 0) {
-            isValid[i] = points[0] == pt;
-        } else if (i == 2) {
-            isValid[i] = points[2] == pt;
+        if (j == 0) {
+            isValid[j] = points[0] == pt;
+        } else if (j == 2) {
+            isValid[j] = points[2] == pt;
         }
     }
 };

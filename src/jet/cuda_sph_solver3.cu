@@ -6,7 +6,7 @@
 
 #include <pch.h>
 
-#include <jet/cuda_particle_system_solver3.h>
+#include <jet/cuda_sph_solver3.h>
 #include <jet/cuda_utils.h>
 #include <jet/timer.h>
 
@@ -22,8 +22,11 @@ using thrust::get;
 using thrust::make_tuple;
 using thrust::make_zip_iterator;
 
-namespace {
+static double kTimeStepLimitBySpeedFactor = 0.4;
+static double kTimeStepLimitByForceFactor = 0.25;
 
+namespace {
+#if 0
 struct ResolveCollision {
     __host__ __device__ ResolveCollision() {}
 
@@ -88,48 +91,49 @@ struct AdvanceTimeStepKernel {
         get<1>(t) = v1;
     }
 };
-
+#endif
 }  // namespace
 
-CudaParticleSystemSolver3::CudaParticleSystemSolver3()
-    : CudaParticleSystemSolver3(1e-3f, 1e-3f) {}
+CudaSphSolver3::CudaSphSolver3()
+    : CudaSphSolver3(static_cast<float>(kWaterDensity), 0.1f, 1.8f) {}
 
-CudaParticleSystemSolver3::CudaParticleSystemSolver3(float radius, float mass)
-    : _radius(radius), _mass(mass) {
+CudaSphSolver3::CudaSphSolver3(float targetDensity, float targetSpacing,
+                               float relativeKernelRadius)
+    : _targetDensity(targetDensity),
+      _targetSpacing(targetSpacing),
+      _relativeKernelRadius(relativeKernelRadius) {
     _particleSystemData = std::make_shared<CudaParticleSystemData3>();
+    setIsUsingFixedSubTimeSteps(false);
 }
 
-CudaParticleSystemSolver3::~CudaParticleSystemSolver3() {}
+CudaSphSolver3::~CudaSphSolver3() {}
 
-float CudaParticleSystemSolver3::dragCoefficient() const {
-    return _dragCoefficient;
-}
+float CudaSphSolver3::dragCoefficient() const { return _dragCoefficient; }
 
-void CudaParticleSystemSolver3::setDragCoefficient(float newDragCoefficient) {
+void CudaSphSolver3::setDragCoefficient(float newDragCoefficient) {
     _dragCoefficient = std::max(newDragCoefficient, 0.0f);
 }
 
-float CudaParticleSystemSolver3::restitutionCoefficient() const {
+float CudaSphSolver3::restitutionCoefficient() const {
     return _restitutionCoefficient;
 }
 
-void CudaParticleSystemSolver3::setRestitutionCoefficient(
+void CudaSphSolver3::setRestitutionCoefficient(
     float newRestitutionCoefficient) {
     _restitutionCoefficient = clamp(newRestitutionCoefficient, 0.0f, 1.0f);
 }
 
-const Vector3F& CudaParticleSystemSolver3::gravity() const { return _gravity; }
+const Vector3F& CudaSphSolver3::gravity() const { return _gravity; }
 
-void CudaParticleSystemSolver3::setGravity(const Vector3F& newGravity) {
+void CudaSphSolver3::setGravity(const Vector3F& newGravity) {
     _gravity = newGravity;
 }
 
-const CudaParticleSystemData3Ptr&
-CudaParticleSystemSolver3::particleSystemData() const {
+const CudaParticleSystemData3Ptr& CudaSphSolver3::particleSystemData() const {
     return _particleSystemData;
 }
 
-void CudaParticleSystemSolver3::onInitialize() {
+void CudaSphSolver3::onInitialize() {
     // When initializing the solver, update the collider and emitter state as
     // well since they also affects the initial condition of the simulation.
     Timer timer;
@@ -143,25 +147,24 @@ void CudaParticleSystemSolver3::onInitialize() {
              << " seconds";
 }
 
-void CudaParticleSystemSolver3::onAdvanceTimeStep(double timeStepInSeconds) {
+void CudaSphSolver3::onAdvanceTimeStep(double timeStepInSeconds) {
     beginAdvanceTimeStep(timeStepInSeconds);
 
-    auto posCurr = _particleSystemData->positions();
-    auto velCurr = _particleSystemData->velocities();
-    auto dt = static_cast<float>(timeStepInSeconds);
-    auto g = make_float4(_gravity.x, _gravity.y, _gravity.z, 0.0f);
+    // auto posCurr = _particleSystemData->positions();
+    // auto velCurr = _particleSystemData->velocities();
+    // auto dt = static_cast<float>(timeStepInSeconds);
+    // auto g = make_float4(_gravity.x, _gravity.y, _gravity.z, 0.0f);
 
-    AdvanceTimeStepKernel kernel(_mass, dt, g);
+    // AdvanceTimeStepKernel kernel(_mass, dt, g);
 
-    thrust::for_each(
-        make_zip_iterator(make_tuple(posCurr.begin(), velCurr.begin())),
-        make_zip_iterator(make_tuple(posCurr.end(), velCurr.end())), kernel);
+    // thrust::for_each(
+    //     make_zip_iterator(make_tuple(posCurr.begin(), velCurr.begin())),
+    //     make_zip_iterator(make_tuple(posCurr.end(), velCurr.end())), kernel);
 
     endAdvanceTimeStep(timeStepInSeconds);
 }
 
-void CudaParticleSystemSolver3::onBeginAdvanceTimeStep(
-    double timeStepInSeconds) {
+void CudaSphSolver3::onBeginAdvanceTimeStep(double timeStepInSeconds) {
     // Update collider and emitter
     Timer timer;
     updateCollider(timeStepInSeconds);
@@ -174,51 +177,54 @@ void CudaParticleSystemSolver3::onBeginAdvanceTimeStep(
              << " seconds";
 }
 
-void CudaParticleSystemSolver3::onEndAdvanceTimeStep(double timeStepInSeconds) {
+void CudaSphSolver3::onEndAdvanceTimeStep(double timeStepInSeconds) {
     UNUSED_VARIABLE(timeStepInSeconds);
 }
 
-void CudaParticleSystemSolver3::beginAdvanceTimeStep(double timeStepInSeconds) {
+void CudaSphSolver3::beginAdvanceTimeStep(double timeStepInSeconds) {
     onBeginAdvanceTimeStep(timeStepInSeconds);
 }
 
-void CudaParticleSystemSolver3::endAdvanceTimeStep(double timeStepInSeconds) {
+void CudaSphSolver3::endAdvanceTimeStep(double timeStepInSeconds) {
     onEndAdvanceTimeStep(timeStepInSeconds);
 }
 
-void CudaParticleSystemSolver3::updateCollider(double timeStepInSeconds) {
+void CudaSphSolver3::updateCollider(double timeStepInSeconds) {
     UNUSED_VARIABLE(timeStepInSeconds);
 }
 
-void CudaParticleSystemSolver3::updateEmitter(double timeStepInSeconds) {
+void CudaSphSolver3::updateEmitter(double timeStepInSeconds) {
     UNUSED_VARIABLE(timeStepInSeconds);
 }
 
-CudaParticleSystemSolver3::Builder CudaParticleSystemSolver3::builder() {
-    return Builder();
-}
+CudaSphSolver3::Builder CudaSphSolver3::builder() { return Builder(); }
 
 //
 
-CudaParticleSystemSolver3::Builder&
-CudaParticleSystemSolver3::Builder::withRadius(float radius) {
-    _radius = radius;
+CudaSphSolver3::Builder& CudaSphSolver3::Builder::withTargetDensity(
+    float targetDensity) {
+    _targetDensity = targetDensity;
     return (*this);
 }
 
-CudaParticleSystemSolver3::Builder&
-CudaParticleSystemSolver3::Builder::withMass(float mass) {
-    _mass = mass;
+CudaSphSolver3::Builder& CudaSphSolver3::Builder::withTargetSpacing(
+    float targetSpacing) {
+    _targetSpacing = targetSpacing;
     return (*this);
 }
 
-CudaParticleSystemSolver3 CudaParticleSystemSolver3::Builder::build() const {
-    return CudaParticleSystemSolver3(_radius, _mass);
+CudaSphSolver3::Builder& CudaSphSolver3::Builder::withRelativeKernelRadius(
+    float relativeKernelRadius) {
+    _relativeKernelRadius = relativeKernelRadius;
+    return (*this);
 }
 
-CudaParticleSystemSolver3Ptr CudaParticleSystemSolver3::Builder::makeShared()
-    const {
-    return std::shared_ptr<CudaParticleSystemSolver3>(
-        new CudaParticleSystemSolver3(_radius, _mass),
-        [](CudaParticleSystemSolver3* obj) { delete obj; });
+CudaSphSolver3 CudaSphSolver3::Builder::build() const {
+    return CudaSphSolver3(_targetDensity, _targetSpacing, _relativeKernelRadius);
+}
+
+CudaSphSolver3Ptr CudaSphSolver3::Builder::makeShared() const {
+    return std::shared_ptr<CudaSphSolver3>(
+        new CudaSphSolver3(_targetDensity, _targetSpacing, _relativeKernelRadius),
+        [](CudaSphSolver3* obj) { delete obj; });
 }

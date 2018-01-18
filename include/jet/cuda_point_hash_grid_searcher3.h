@@ -125,15 +125,7 @@ class CudaPointHashGridSearcher3 final {
     //!
     template <typename Callback>
     void forEachNearbyPoint(const CudaArrayView1<float4>& origins, float radius,
-                            Callback callback) const {
-        thrust::for_each(
-            thrust::counting_iterator<size_t>(kZeroSize),
-            thrust::counting_iterator<size_t>(kZeroSize) + origins.size(),
-            ForEachNearbyPointFunc<Callback>(
-                radius, _gridSpacing, _resolution, _startIndexTable.data(),
-                _endIndexTable.data(), _sortedIndices.data(), _points.data(),
-                origins.data(), callback));
-    }
+                            Callback callback) const;
 
 #if 0
     //!
@@ -147,6 +139,13 @@ class CudaPointHashGridSearcher3 final {
     //!
     bool hasNearbyPoint(const Vector3D& origin, float radius) const override;
 #endif
+
+    float gridSpacing() const;
+
+    Size3 resolution() const;
+
+    const CudaArrayView1<float4> sortedPoints() const;
+
     //!
     //! \brief      Returns the hash key list.
     //!
@@ -155,7 +154,7 @@ class CudaPointHashGridSearcher3 final {
     //!
     //! \return     The hash key list.
     //!
-    CudaArrayView1<size_t> keys() const;
+    const CudaArrayView1<size_t> keys() const;
 
     //!
     //! \brief      Returns the start index table.
@@ -180,7 +179,7 @@ class CudaPointHashGridSearcher3 final {
     //!
     //! \return     The start index table.
     //!
-    CudaArrayView1<size_t> startIndexTable() const;
+    const CudaArrayView1<size_t> startIndexTable() const;
 
     //!
     //! \brief      Returns the end index table.
@@ -205,7 +204,7 @@ class CudaPointHashGridSearcher3 final {
     //!
     //! \return     The end index table.
     //!
-    CudaArrayView1<size_t> endIndexTable() const;
+    const CudaArrayView1<size_t> endIndexTable() const;
 
     //!
     //! \brief      Returns the sorted indices of the points.
@@ -217,7 +216,7 @@ class CudaPointHashGridSearcher3 final {
     //!
     //! \return     The sorted indices of the points.
     //!
-    CudaArrayView1<size_t> sortedIndices() const;
+    const CudaArrayView1<size_t> sortedIndices() const;
 
     //! Assignment operator.
     CudaPointHashGridSearcher3& operator=(

@@ -8,15 +8,130 @@
 #include <jet/macros.h>
 
 #include <thrust/copy.h>
+#include <thrust/scan.h>
+#include <thrust/transform.h>
 
 using namespace jet;
 using namespace experimental;
 
 namespace {
 
-float4 toFloat4(const Vector4F& vec) {
+constexpr size_t kDefaultHashGridResolution = 64;
+
+template <typename VectorType>
+inline JET_CUDA_HOST_DEVICE float4 toFloat4(const VectorType& vec) {
     return make_float4(vec.x, vec.y, vec.z, vec.w);
 }
+
+template <typename SizeType>
+inline JET_CUDA_HOST_DEVICE int3 toInt3(const SizeType& size) {
+    return make_int3(static_cast<int>(size.x), static_cast<int>(size.y),
+                     static_cast<int>(size.z));
+}
+
+template <typename InsideCallback, typename CounterCallback>
+class ForEachBucketBaseFunc {
+ public:
+    inline JET_CUDA_HOST ForEachBucketBaseFunc(
+        const CudaPointHashGridSearcher3& searcher, float radius,
+        const float4* origins, InsideCallback insideCb, CounterCallback cntCb)
+        : _insideCallback(insideCb),
+          _counterCallback(cntCb),
+          _hashUtils(searcher.gridSpacing(), toInt3(searcher.resolution())),
+          _radius(radius),
+          _startIndexTable(searcher.startIndexTable().data()),
+          _endIndexTable(searcher.endIndexTable().data()),
+          _sortedIndices(searcher.startIndexTable().data()),
+          _points(searcher.sortedPoints().data()),
+          _origins(origins) {}
+
+    template <typename Index>
+    inline JET_CUDA_HOST_DEVICE void operator()(Index idx) {
+        const float4 origin = _origins[idx];
+
+        size_t nearbyKeys[8];
+        _hashUtils.getNearbyKeys(origin, nearbyKeys);
+
+        const float queryRadiusSquared = _radius * _radius;
+
+        size_t cnt = 0;
+        for (int i = 0; i < 8; i++) {
+            size_t nearbyKey = nearbyKeys[i];
+            size_t start = _startIndexTable[nearbyKey];
+            size_t end = _endIndexTable[nearbyKey];
+
+            // Empty bucket -- continue to next bucket
+            if (start == kMaxSize) {
+                continue;
+            }
+
+            for (size_t j = start; j < end; ++j) {
+                float4 direction = _points[j] - origin;
+                float distanceSquared = lengthSquared(direction);
+                if (distanceSquared <= queryRadiusSquared) {
+                    _insideCallback(idx, j, cnt);
+                    ++cnt;
+                }
+            }
+        }
+
+        _counterCallback(idx, cnt);
+    }
+
+ private:
+    InsideCallback _insideCallback;
+    CounterCallback _counterCallback;
+    CudaPointHashGridSearcher3::HashUtils _hashUtils;
+    float _radius;
+    const size_t* _startIndexTable;
+    const size_t* _endIndexTable;
+    const size_t* _sortedIndices;
+    const float4* _points;
+    const float4* _origins;
+};
+
+class NoOpFunc {
+ public:
+    template <typename Index>
+    inline JET_CUDA_HOST_DEVICE void operator()(Index, Index) {}
+
+    template <typename Index>
+    inline JET_CUDA_HOST_DEVICE void operator()(Index, Index, Index) {}
+};
+
+class BuildNeighborListsFunc {
+ public:
+    inline JET_CUDA_HOST_DEVICE BuildNeighborListsFunc(
+        const size_t* neighborStarts, const size_t* neighborEnds,
+        size_t* neighborLists)
+        : _neighborStarts(neighborStarts),
+          _neighborEnds(neighborEnds),
+          _neighborLists(neighborLists) {}
+
+    template <typename Index>
+    inline JET_CUDA_HOST_DEVICE void operator()(Index idx, Index j, Index cnt) {
+        _neighborLists[_neighborStarts[idx] + cnt] = j;
+    }
+
+ private:
+    const size_t* _neighborStarts;
+    const size_t* _neighborEnds;
+    size_t* _neighborLists;
+};
+
+class CountNearbyPointsFunc {
+ public:
+    inline JET_CUDA_HOST_DEVICE CountNearbyPointsFunc(size_t* cnt)
+        : _counts(cnt) {}
+
+    template <typename Index>
+    inline JET_CUDA_HOST_DEVICE void operator()(Index idx, Index cnt) {
+        _counts[idx] = cnt;
+    }
+
+ private:
+    size_t* _counts;
+};
 
 }  // namespace
 
@@ -182,6 +297,66 @@ void CudaParticleSystemData3::addParticles(
     }
 }
 
+const CudaArrayView1<size_t> CudaParticleSystemData3::neighborStarts() const {
+    return _neighborStarts.view();
+}
+
+const CudaArrayView1<size_t> CudaParticleSystemData3::neighborEnds() const {
+    return _neighborEnds.view();
+}
+
+const CudaArrayView1<size_t> CudaParticleSystemData3::neighborLists() const {
+    return _neighborLists.view();
+}
+
+const CudaPointHashGridSearcher3* CudaParticleSystemData3::neighborSearcher()
+    const {
+    return _neighborSearcher.get();
+}
+
+void CudaParticleSystemData3::buildNeighborSearcher(float maxSearchRadius) {
+    _neighborSearcher = std::make_shared<CudaPointHashGridSearcher3>(
+        kDefaultHashGridResolution, kDefaultHashGridResolution,
+        kDefaultHashGridResolution, 2.0f * maxSearchRadius);
+    _neighborSearcher->build(positions());
+}
+
+void CudaParticleSystemData3::buildNeighborLists(float maxSearchRadius) {
+    _neighborStarts.resize(_numberOfParticles);
+    _neighborEnds.resize(_numberOfParticles);
+
+    auto neighborStarts = _neighborStarts.view();
+    float radius = static_cast<float>(maxSearchRadius);
+
+    // Count nearby points
+    thrust::for_each(
+        thrust::counting_iterator<size_t>(kZeroSize),
+        thrust::counting_iterator<size_t>(kZeroSize) + numberOfParticles(),
+        ForEachBucketBaseFunc<NoOpFunc, CountNearbyPointsFunc>(
+            *_neighborSearcher, radius, positions().data(), NoOpFunc(),
+            CountNearbyPointsFunc(_neighborStarts.data())));
+
+    // Make start/end point of neighbor list, and allocate neighbor list.
+    thrust::inclusive_scan(_neighborStarts.begin(), _neighborStarts.end(),
+                           _neighborEnds.begin());
+    thrust::transform(_neighborEnds.begin(), _neighborEnds.end(),
+                      _neighborStarts.begin(), _neighborStarts.begin(),
+                      thrust::minus<unsigned int>());
+    size_t rbeginIdx = _neighborEnds.size() > 0 ? _neighborEnds.size() - 1 : 0;
+    size_t m = _neighborEnds[rbeginIdx];
+    _neighborLists.resize(m, 0);
+
+    // Build neighbor lists
+    thrust::for_each(
+        thrust::counting_iterator<size_t>(kZeroSize),
+        thrust::counting_iterator<size_t>(kZeroSize) + numberOfParticles(),
+        ForEachBucketBaseFunc<BuildNeighborListsFunc, NoOpFunc>(
+            *_neighborSearcher, radius, positions().data(),
+            BuildNeighborListsFunc(_neighborStarts.data(), _neighborEnds.data(),
+                                   _neighborLists.data()),
+            NoOpFunc()));
+}
+
 void CudaParticleSystemData3::set(const CudaParticleSystemData3& other) {
     _numberOfParticles = other._numberOfParticles;
     _positionIdx = other._positionIdx;
@@ -190,6 +365,8 @@ void CudaParticleSystemData3::set(const CudaParticleSystemData3& other) {
     _intDataList = other._intDataList;
     _floatDataList = other._floatDataList;
     _vectorDataList = other._vectorDataList;
+
+    _neighborSearcher->set(*other._neighborSearcher);
 }
 
 CudaParticleSystemData3& CudaParticleSystemData3::operator=(

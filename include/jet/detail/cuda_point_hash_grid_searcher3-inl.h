@@ -157,10 +157,25 @@ CudaPointHashGridSearcher3::ForEachNearbyPointFunc<Callback>::operator()(
                     direction /= distance;
                 }
 
-                _callback(_sortedIndices[j], _points[j]);
+                _callback(idx, origin, _sortedIndices[j], _points[j]);
             }
         }
     }
+}
+
+//
+
+template <typename Callback>
+void CudaPointHashGridSearcher3::forEachNearbyPoint(
+    const CudaArrayView1<float4>& origins, float radius,
+    Callback callback) const {
+    thrust::for_each(
+        thrust::counting_iterator<size_t>(kZeroSize),
+        thrust::counting_iterator<size_t>(kZeroSize) + origins.size(),
+        ForEachNearbyPointFunc<Callback>(
+            radius, _gridSpacing, _resolution, _startIndexTable.data(),
+            _endIndexTable.data(), _sortedIndices.data(), _points.data(),
+            origins.data(), callback));
 }
 
 }  // namespace experimental
