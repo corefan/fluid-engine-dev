@@ -97,6 +97,19 @@ inline JET_CUDA_HOST_DEVICE float length(float4 v) {
     return sqrtf(lengthSquared(v));
 }
 
+// MARK: Converters
+
+template <typename VectorType>
+inline JET_CUDA_HOST_DEVICE float4 toFloat4(const VectorType& vec) {
+    return make_float4(vec.x, vec.y, vec.z, vec.w);
+}
+
+template <typename SizeType>
+inline JET_CUDA_HOST_DEVICE int3 toInt3(const SizeType& size) {
+    return make_int3(static_cast<int>(size.x), static_cast<int>(size.y),
+                     static_cast<int>(size.z));
+}
+
 }  // namespace experimental
 }  // namespace jet
 
