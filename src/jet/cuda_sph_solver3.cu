@@ -6,6 +6,7 @@
 
 #include <pch.h>
 
+#include <jet/constants.h>
 #include <jet/cuda_sph_solver3.h>
 #include <jet/cuda_utils.h>
 #include <jet/timer.h>
@@ -102,7 +103,7 @@ CudaSphSolver3::CudaSphSolver3(float targetDensity, float targetSpacing,
     : _targetDensity(targetDensity),
       _targetSpacing(targetSpacing),
       _relativeKernelRadius(relativeKernelRadius) {
-    _particleSystemData = std::make_shared<CudaParticleSystemData3>();
+    _sphSystemData = std::make_shared<CudaSphSystemData3>();
     setIsUsingFixedSubTimeSteps(false);
 }
 
@@ -129,8 +130,85 @@ void CudaSphSolver3::setGravity(const Vector3F& newGravity) {
     _gravity = newGravity;
 }
 
-const CudaParticleSystemData3Ptr& CudaSphSolver3::particleSystemData() const {
-    return _particleSystemData;
+float CudaSphSolver3::eosExponent() const { return _eosExponent; }
+
+void CudaSphSolver3::setEosExponent(float newEosExponent) {
+    _eosExponent = std::max(newEosExponent, 1.0f);
+}
+
+float CudaSphSolver3::negativePressureScale() const {
+    return _negativePressureScale;
+}
+
+void CudaSphSolver3::setNegativePressureScale(float newNegativePressureScale) {
+    _negativePressureScale = clamp(newNegativePressureScale, 0.0f, 1.0f);
+}
+
+float CudaSphSolver3::viscosityCoefficient() const {
+    return _viscosityCoefficient;
+}
+
+void CudaSphSolver3::setViscosityCoefficient(float newViscosityCoefficient) {
+    _viscosityCoefficient = std::max(newViscosityCoefficient, 0.0f);
+}
+
+float CudaSphSolver3::pseudoViscosityCoefficient() const {
+    return _pseudoViscosityCoefficient;
+}
+
+void CudaSphSolver3::setPseudoViscosityCoefficient(
+    float newPseudoViscosityCoefficient) {
+    _pseudoViscosityCoefficient = std::max(newPseudoViscosityCoefficient, 0.0f);
+}
+
+float CudaSphSolver3::speedOfSound() const { return _speedOfSound; }
+
+void CudaSphSolver3::setSpeedOfSound(float newSpeedOfSound) {
+    _speedOfSound = std::max(newSpeedOfSound, kEpsilonF);
+}
+
+float CudaSphSolver3::timeStepLimitScale() const { return _timeStepLimitScale; }
+
+void CudaSphSolver3::setTimeStepLimitScale(float newScale) {
+    _timeStepLimitScale = std::max(newScale, 0.0f);
+}
+
+CudaSphSystemData3* CudaSphSolver3::particleSystemData() {
+    return _sphSystemData.get();
+}
+
+const CudaSphSystemData3* CudaSphSolver3::particleSystemData() const {
+    return _sphSystemData.get();
+}
+
+unsigned int CudaSphSolver3::numberOfSubTimeSteps(
+    double timeIntervalInSeconds) const {
+    auto particles = particleSystemData();
+    size_t numberOfParticles = particles->numberOfParticles();
+    // auto f = particles->forces();
+
+    const double kernelRadius = particles->kernelRadius();
+    const double mass = particles->mass();
+
+    double maxForceMagnitude = 0.0;
+
+    // for (size_t i = 0; i < numberOfParticles; ++i) {
+    //     maxForceMagnitude = std::max(maxForceMagnitude, f[i].length());
+    // }
+    maxForceMagnitude = kGravity;
+
+    double timeStepLimitBySpeed =
+        kTimeStepLimitBySpeedFactor * kernelRadius / _speedOfSound;
+    double timeStepLimitByForce =
+        kTimeStepLimitByForceFactor *
+        std::sqrt(kernelRadius * mass / maxForceMagnitude);
+
+    double desiredTimeStep =
+        _timeStepLimitScale *
+        std::min(timeStepLimitBySpeed, timeStepLimitByForce);
+
+    return static_cast<unsigned int>(
+        std::ceil(timeIntervalInSeconds / desiredTimeStep));
 }
 
 void CudaSphSolver3::onInitialize() {
@@ -150,8 +228,8 @@ void CudaSphSolver3::onInitialize() {
 void CudaSphSolver3::onAdvanceTimeStep(double timeStepInSeconds) {
     beginAdvanceTimeStep(timeStepInSeconds);
 
-    // auto posCurr = _particleSystemData->positions();
-    // auto velCurr = _particleSystemData->velocities();
+    // auto posCurr = _sphSystemData->positions();
+    // auto velCurr = _sphSystemData->velocities();
     // auto dt = static_cast<float>(timeStepInSeconds);
     // auto g = make_float4(_gravity.x, _gravity.y, _gravity.z, 0.0f);
 
@@ -174,6 +252,12 @@ void CudaSphSolver3::onBeginAdvanceTimeStep(double timeStepInSeconds) {
     timer.reset();
     updateEmitter(timeStepInSeconds);
     JET_INFO << "Update emitter took " << timer.durationInSeconds()
+             << " seconds";
+
+    timer.reset();
+    _sphSystemData->buildNeighborSearcher();
+    _sphSystemData->buildNeighborListsAndUpdateDensities();
+    JET_INFO << "Update neighbor lists took " << timer.durationInSeconds()
              << " seconds";
 }
 
@@ -220,11 +304,13 @@ CudaSphSolver3::Builder& CudaSphSolver3::Builder::withRelativeKernelRadius(
 }
 
 CudaSphSolver3 CudaSphSolver3::Builder::build() const {
-    return CudaSphSolver3(_targetDensity, _targetSpacing, _relativeKernelRadius);
+    return CudaSphSolver3(_targetDensity, _targetSpacing,
+                          _relativeKernelRadius);
 }
 
 CudaSphSolver3Ptr CudaSphSolver3::Builder::makeShared() const {
     return std::shared_ptr<CudaSphSolver3>(
-        new CudaSphSolver3(_targetDensity, _targetSpacing, _relativeKernelRadius),
+        new CudaSphSolver3(_targetDensity, _targetSpacing,
+                           _relativeKernelRadius),
         [](CudaSphSolver3* obj) { delete obj; });
 }

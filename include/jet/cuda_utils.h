@@ -110,6 +110,12 @@ inline JET_CUDA_HOST_DEVICE int3 toInt3(const SizeType& size) {
                      static_cast<int>(size.z));
 }
 
+template <typename SizeType>
+inline JET_CUDA_HOST_DEVICE uint3 toUInt3(const SizeType& size) {
+    return make_uint3(static_cast<uint32_t>(size.x), static_cast<uint32_t>(size.y),
+        static_cast<uint32_t>(size.z));
+}
+
 }  // namespace experimental
 }  // namespace jet
 

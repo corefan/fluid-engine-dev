@@ -24,7 +24,7 @@ struct ForEachCallback {
     ForEachCallback(int* cnt) : count(cnt) {}
 
     template <typename Index, typename Float4>
-    JET_CUDA_HOST_DEVICE void operator()(Index i, Float4 o, Index j,
+    JET_CUDA_HOST_DEVICE void operator()(size_t i, Float4 o, Index j,
                                          Float4 pt) {
         count[i] += 1;
     }

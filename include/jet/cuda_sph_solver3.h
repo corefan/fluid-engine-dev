@@ -10,7 +10,7 @@
 #define INCLUDE_JET_CUDA_SPH_SOLVER3_H_
 
 #include <jet/constants.h>
-#include <jet/cuda_particle_system_data3.h>
+#include <jet/cuda_sph_system_data3.h>
 #include <jet/physics_animation.h>
 #include <jet/vector3.h>
 
@@ -161,7 +161,15 @@ class CudaSphSolver3 : public PhysicsAnimation {
     //! This function returns the particle system data. The data is created when
     //! this solver is constructed and also owned by the solver.
     //!
-    const CudaParticleSystemData3Ptr& particleSystemData() const;
+    CudaSphSystemData3* particleSystemData();
+
+    //!
+    //! \brief Returns the particle system data.
+    //!
+    //! This function returns the particle system data. The data is created when
+    //! this solver is constructed and also owned by the solver.
+    //!
+    const CudaSphSystemData3* particleSystemData() const;
 
     //! Returns builder fox CudaParticleSystemSolver3.
     static Builder builder();
@@ -201,7 +209,7 @@ class CudaSphSolver3 : public PhysicsAnimation {
     float _timeStepLimitScale = 1.0f;
 
     // Data model
-    CudaParticleSystemData3Ptr _particleSystemData;
+    CudaSphSystemData3Ptr _sphSystemData;
 
     void beginAdvanceTimeStep(double timeStepInSeconds);
 

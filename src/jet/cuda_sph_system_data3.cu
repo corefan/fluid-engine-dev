@@ -4,45 +4,17 @@
 // personal capacity and am not conveying any rights to any intellectual
 // property of any third parties.
 
+#include "cuda_sph_system_data3_func.h"
+
 #include <jet/bcc_lattice_point_generator.h>
 #include <jet/cuda_sph_system_data3.h>
 #include <jet/sph_kernels3.h>
 
+#include <thrust/extrema.h>
 #include <thrust/for_each.h>
 
 using namespace jet;
 using namespace experimental;
-
-using thrust::get;
-
-namespace {
-
-struct UpdateDensity {
-    float h2;
-    float h3;
-    float m;
-    float* d;
-
-    JET_CUDA_HOST_DEVICE UpdateDensity(float h, float m_, float* d_)
-        : h2(h * h), h3(h * h * h), m(m_), d(d_) {}
-
-    inline JET_CUDA_DEVICE void operator()(size_t i, float4 o, size_t,
-                                           float4 p) {
-        float dist = length(o - p);
-        d[i] += m * kernel(dist);
-    }
-
-    inline JET_CUDA_DEVICE float kernel(float distance) {
-        if (distance * distance >= h2) {
-            return 0.0f;
-        } else {
-            double x = 1.0f - distance * distance / h2;
-            return 315.0f / (64.0f * kPiF * h3) * x * x * x;
-        }
-    }
-};
-
-}  // namespace
 
 CudaSphSystemData3::CudaSphSystemData3() : CudaSphSystemData3(0) {}
 
@@ -120,6 +92,48 @@ void CudaSphSystemData3::setKernelRadius(float kernelRadius) {
 }
 
 float CudaSphSystemData3::mass() const { return _mass; }
+
+void CudaSphSystemData3::buildNeighborSearcher() {
+    CudaParticleSystemData3::buildNeighborSearcher(_kernelRadius);
+}
+
+void CudaSphSystemData3::buildNeighborListsAndUpdateDensities() {
+    size_t n = numberOfParticles();
+
+    _neighborStarts.resize(n);
+    _neighborEnds.resize(n);
+
+    auto neighborStarts = _neighborStarts.view();
+
+    // Count nearby points
+    thrust::for_each(
+        thrust::counting_iterator<size_t>(0),
+        thrust::counting_iterator<size_t>(0) + numberOfParticles(),
+        ForEachNeighborFunc<NoOpFunc, CountNearbyPointsFunc>(
+            *_neighborSearcher, _kernelRadius, positions().data(), NoOpFunc(),
+            CountNearbyPointsFunc(_neighborStarts.data())));
+
+    // Make start/end point of neighbor list, and allocate neighbor list.
+    // thrust::inclusive_scan(_neighborStarts.begin(), _neighborStarts.end(),
+    //                        _neighborEnds.begin());
+    // thrust::transform(_neighborEnds.begin(), _neighborEnds.end(),
+    //                   _neighborStarts.begin(), _neighborStarts.begin(),
+    //                   thrust::minus<uint32_t>());
+    // size_t rbeginIdx = _neighborEnds.size() > 0 ? _neighborEnds.size() - 1 :
+    // 0; uint32_t m = _neighborEnds[rbeginIdx]; _neighborLists.resize(m, 0);
+
+    // Build neighbor lists and update densities
+    // thrust::for_each(
+    //     thrust::counting_iterator<size_t>(0),
+    //     thrust::counting_iterator<size_t>(0) + numberOfParticles(),
+    //     ForEachNeighborFunc<BuildNeighborListsAndUpdateDensitiesFunc,
+    //     NoOpFunc>(
+    //         *_neighborSearcher, _kernelRadius, positions().data(),
+    //         BuildNeighborListsAndUpdateDensitiesFunc(
+    //             _neighborStarts.data(), _neighborEnds.data(), _kernelRadius,
+    //             _mass, _neighborLists.data(), densities().data()),
+    //         NoOpFunc()));
+}
 
 void CudaSphSystemData3::set(const CudaSphSystemData3& other) {
     CudaParticleSystemData3::set(other);

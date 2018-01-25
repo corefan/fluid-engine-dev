@@ -71,18 +71,26 @@ TEST(CudaPointHashGridSearcher3, Build) {
               searcherD.sortedIndices().size());
 
     for (size_t i = 0; i < searcher.keys().size(); ++i) {
-        size_t valD = searcherD.keys()[i];
+        uint32_t valD = searcherD.keys()[i];
         EXPECT_EQ(searcher.keys()[i], valD);
     }
 
     for (size_t i = 0; i < searcher.startIndexTable().size(); ++i) {
-        size_t valD = searcherD.startIndexTable()[i];
-        EXPECT_EQ(searcher.startIndexTable()[i], valD);
+        uint32_t valD = searcherD.startIndexTable()[i];
+        if (valD == 0xffffffff) {
+            EXPECT_EQ(kMaxSize, searcher.startIndexTable()[i]);
+        } else {
+            EXPECT_EQ(searcher.startIndexTable()[i], valD);
+        }
     }
 
     for (size_t i = 0; i < searcher.endIndexTable().size(); ++i) {
-        size_t valD = searcherD.endIndexTable()[i];
-        EXPECT_EQ(searcher.endIndexTable()[i], valD);
+        uint32_t valD = searcherD.endIndexTable()[i];
+        if (valD == 0xffffffff) {
+            EXPECT_EQ(kMaxSize, searcher.endIndexTable()[i]);
+        } else {
+            EXPECT_EQ(searcher.endIndexTable()[i], valD);
+        }
     }
 
     for (size_t i = 0; i < searcher.sortedIndices().size(); ++i) {

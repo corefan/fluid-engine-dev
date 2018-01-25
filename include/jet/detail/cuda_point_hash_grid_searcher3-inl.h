@@ -19,12 +19,12 @@ namespace experimental {
 JET_CUDA_HOST_DEVICE CudaPointHashGridSearcher3::HashUtils::HashUtils() {}
 
 JET_CUDA_HOST_DEVICE CudaPointHashGridSearcher3::HashUtils::HashUtils(
-    float gridSpacing, int3 resolution)
+    float gridSpacing, uint3 resolution)
     : _gridSpacing(gridSpacing), _resolution(resolution) {}
 
 inline JET_CUDA_HOST_DEVICE void
-CudaPointHashGridSearcher3::HashUtils::getNearbyKeys(float4 position,
-                                                     size_t* nearbyKeys) const {
+CudaPointHashGridSearcher3::HashUtils::getNearbyKeys(
+    float4 position, uint32_t* nearbyKeys) const {
     int3 originIndex = getBucketIndex(position), nearbyBucketIndices[8];
 
     for (int i = 0; i < 8; i++) {
@@ -75,13 +75,13 @@ CudaPointHashGridSearcher3::HashUtils::getNearbyKeys(float4 position,
 inline JET_CUDA_HOST_DEVICE int3
 CudaPointHashGridSearcher3::HashUtils::getBucketIndex(float4 position) const {
     int3 bucketIndex;
-    bucketIndex.x = static_cast<ssize_t>(floorf(position.x / _gridSpacing));
-    bucketIndex.y = static_cast<ssize_t>(floorf(position.y / _gridSpacing));
-    bucketIndex.z = static_cast<ssize_t>(floorf(position.z / _gridSpacing));
+    bucketIndex.x = static_cast<int>(floorf(position.x / _gridSpacing));
+    bucketIndex.y = static_cast<int>(floorf(position.y / _gridSpacing));
+    bucketIndex.z = static_cast<int>(floorf(position.z / _gridSpacing));
     return bucketIndex;
 }
 
-inline JET_CUDA_HOST_DEVICE size_t
+inline JET_CUDA_HOST_DEVICE uint32_t
 CudaPointHashGridSearcher3::HashUtils::getHashKeyFromBucketIndex(
     int3 bucketIndex) const {
     int3 wrappedIndex = bucketIndex;
@@ -97,12 +97,12 @@ CudaPointHashGridSearcher3::HashUtils::getHashKeyFromBucketIndex(
     if (wrappedIndex.z < 0) {
         wrappedIndex.z += _resolution.z;
     }
-    return static_cast<size_t>(
+    return static_cast<uint32_t>(
         (wrappedIndex.z * _resolution.y + wrappedIndex.y) * _resolution.x +
         wrappedIndex.x);
 }
 
-inline JET_CUDA_HOST_DEVICE size_t
+inline JET_CUDA_HOST_DEVICE uint32_t
 CudaPointHashGridSearcher3::HashUtils::getHashKeyFromPosition(
     float4 position) const {
     int3 bucketIndex = getBucketIndex(position);
@@ -112,8 +112,8 @@ CudaPointHashGridSearcher3::HashUtils::getHashKeyFromPosition(
 template <typename Callback>
 inline JET_CUDA_HOST_DEVICE CudaPointHashGridSearcher3::ForEachNearbyPointFunc<
     Callback>::ForEachNearbyPointFunc(float r, float gridSpacing,
-                                      int3 resolution, const size_t* sit,
-                                      const size_t* eit, const size_t* si,
+                                      uint3 resolution, const uint32_t* sit,
+                                      const uint32_t* eit, const uint32_t* si,
                                       const float4* p, const float4* o,
                                       Callback cb)
     : _hashUtils(gridSpacing, resolution),
@@ -132,23 +132,25 @@ CudaPointHashGridSearcher3::ForEachNearbyPointFunc<Callback>::operator()(
     Index idx) {
     const float4 origin = _origins[idx];
 
-    size_t nearbyKeys[8];
+    uint32_t nearbyKeys[8];
     _hashUtils.getNearbyKeys(origin, nearbyKeys);
 
     const float queryRadiusSquared = _radius * _radius;
 
     for (int i = 0; i < 8; i++) {
-        size_t nearbyKey = nearbyKeys[i];
-        size_t start = _startIndexTable[nearbyKey];
-        size_t end = _endIndexTable[nearbyKey];
+        uint32_t nearbyKey = nearbyKeys[i];
+        uint32_t start = _startIndexTable[nearbyKey];
+        uint32_t end = _endIndexTable[nearbyKey];
 
         // Empty bucket -- continue to next bucket
-        if (start == kMaxSize) {
+        if (start == 0xffffffff) {
             continue;
         }
 
-        for (size_t j = start; j < end; ++j) {
-            float4 direction = _points[j] - origin;
+        for (uint32_t jj = start; jj < end; ++jj) {
+            uint32_t j = _sortedIndices[jj];
+            float4 p = _points[j];
+            float4 direction = p - origin;
             float distanceSquared = lengthSquared(direction);
             if (distanceSquared <= queryRadiusSquared) {
                 float distance = 0.0f;
@@ -157,7 +159,7 @@ CudaPointHashGridSearcher3::ForEachNearbyPointFunc<Callback>::operator()(
                     direction /= distance;
                 }
 
-                _callback(idx, origin, _sortedIndices[j], _points[j]);
+                _callback(idx, origin, j, p);
             }
         }
     }
@@ -170,8 +172,8 @@ void CudaPointHashGridSearcher3::forEachNearbyPoint(
     const CudaArrayView1<float4>& origins, float radius,
     Callback callback) const {
     thrust::for_each(
-        thrust::counting_iterator<size_t>(kZeroSize),
-        thrust::counting_iterator<size_t>(kZeroSize) + origins.size(),
+        thrust::counting_iterator<size_t>(0),
+        thrust::counting_iterator<size_t>(0) + origins.size(),
         ForEachNearbyPointFunc<Callback>(
             radius, _gridSpacing, _resolution, _startIndexTable.data(),
             _endIndexTable.data(), _sortedIndices.data(), _points.data(),

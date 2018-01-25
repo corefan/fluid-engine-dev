@@ -21,7 +21,7 @@ class ForEachNeighborFunc {
         NeighborCounterCallback cntCb)
         : _neighborCallback(insideCb),
           _neighborNeighborCounterCallback(cntCb),
-          _hashUtils(searcher.gridSpacing(), toInt3(searcher.resolution())),
+          _hashUtils(searcher.gridSpacing(), toUInt3(searcher.resolution())),
           _radius(radius),
           _startIndexTable(searcher.startIndexTable().data()),
           _endIndexTable(searcher.endIndexTable().data()),
@@ -33,30 +33,32 @@ class ForEachNeighborFunc {
     inline JET_CUDA_HOST_DEVICE void operator()(Index i) {
         const float4 origin = _origins[i];
 
-        size_t nearbyKeys[8];
+        uint32_t nearbyKeys[8];
         _hashUtils.getNearbyKeys(origin, nearbyKeys);
 
         const float queryRadiusSquared = _radius * _radius;
 
-        size_t cnt = 0;
+        uint32_t cnt = 0;
         for (int c = 0; c < 8; c++) {
-            size_t nearbyKey = nearbyKeys[c];
-            size_t start = _startIndexTable[nearbyKey];
-            size_t end = _endIndexTable[nearbyKey];
+            uint32_t nearbyKey = nearbyKeys[c];
+            uint32_t start = _startIndexTable[nearbyKey];
 
             // Empty bucket -- continue to next bucket
-            if (start == kMaxSize) {
+            if (start == 0xffffffff) {
                 continue;
             }
 
-            for (size_t jj = start; jj < end; ++jj) {
-                float4 r = _points[jj] - origin;
-                size_t j = _sortedIndices[jj];
-                float distanceSquared = lengthSquared(r);
-                if (i != j && distanceSquared <= queryRadiusSquared) {
-                    _neighborCallback(i, j, cnt);
-                    ++cnt;
-                }
+            uint32_t end = _endIndexTable[nearbyKey];
+
+            for (uint32_t jj = start; jj < end; ++jj) {
+                uint32_t j = _sortedIndices[jj];
+                // float4 r = _points[j] - origin;
+                // float distanceSquared = lengthSquared(r);
+                // if (i != j && distanceSquared <= queryRadiusSquared) {
+                //     _neighborCallback(i, j, cnt, distanceSquared);
+                // ++cnt;
+                // }
+                cnt += j;
             }
         }
 
@@ -68,9 +70,9 @@ class ForEachNeighborFunc {
     NeighborCounterCallback _neighborNeighborCounterCallback;
     CudaPointHashGridSearcher3::HashUtils _hashUtils;
     float _radius;
-    const size_t* _startIndexTable;
-    const size_t* _endIndexTable;
-    const size_t* _sortedIndices;
+    const uint32_t* _startIndexTable;
+    const uint32_t* _endIndexTable;
+    const uint32_t* _sortedIndices;
     const float4* _points;
     const float4* _origins;
 };
@@ -78,44 +80,45 @@ class ForEachNeighborFunc {
 class NoOpFunc {
  public:
     template <typename Index>
-    inline JET_CUDA_HOST_DEVICE void operator()(Index, Index) {}
+    inline JET_CUDA_HOST_DEVICE void operator()(size_t, Index) {}
 
     template <typename Index>
-    inline JET_CUDA_HOST_DEVICE void operator()(Index, Index, Index) {}
+    inline JET_CUDA_HOST_DEVICE void operator()(size_t, Index, Index, float) {}
 };
 
 class BuildNeighborListsFunc {
  public:
     inline JET_CUDA_HOST_DEVICE BuildNeighborListsFunc(
-        const size_t* neighborStarts, const size_t* neighborEnds,
-        size_t* neighborLists)
+        const uint32_t* neighborStarts, const uint32_t* neighborEnds,
+        uint32_t* neighborLists)
         : _neighborStarts(neighborStarts),
           _neighborEnds(neighborEnds),
           _neighborLists(neighborLists) {}
 
     template <typename Index>
-    inline JET_CUDA_HOST_DEVICE void operator()(Index i, Index j, Index cnt) {
+    inline JET_CUDA_HOST_DEVICE void operator()(size_t i, Index j, Index cnt,
+                                                float) {
         _neighborLists[_neighborStarts[i] + cnt] = j;
     }
 
  private:
-    const size_t* _neighborStarts;
-    const size_t* _neighborEnds;
-    size_t* _neighborLists;
+    const uint32_t* _neighborStarts;
+    const uint32_t* _neighborEnds;
+    uint32_t* _neighborLists;
 };
 
 class CountNearbyPointsFunc {
  public:
-    inline JET_CUDA_HOST_DEVICE CountNearbyPointsFunc(size_t* cnt)
+    inline JET_CUDA_HOST_DEVICE CountNearbyPointsFunc(uint32_t* cnt)
         : _counts(cnt) {}
 
     template <typename Index>
-    inline JET_CUDA_HOST_DEVICE void operator()(Index idx, Index cnt) {
+    inline JET_CUDA_HOST_DEVICE void operator()(size_t idx, Index cnt) {
         _counts[idx] = cnt;
     }
 
  private:
-    size_t* _counts;
+    uint32_t* _counts;
 };
 
 }  // namespace experimental

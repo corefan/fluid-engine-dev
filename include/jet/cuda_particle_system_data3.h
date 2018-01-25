@@ -116,13 +116,13 @@ class CudaParticleSystemData3 {
         const CudaArrayView1<float4>& newVelocities = CudaArrayView1<float4>{});
 
     //!
-    const CudaArrayView1<size_t> neighborStarts() const;
+    const CudaArrayView1<uint32_t> neighborStarts() const;
 
     //!
-    const CudaArrayView1<size_t> neighborEnds() const;
+    const CudaArrayView1<uint32_t> neighborEnds() const;
 
     //!
-    const CudaArrayView1<size_t> neighborLists() const;
+    const CudaArrayView1<uint32_t> neighborLists() const;
 
     const CudaPointHashGridSearcher3* neighborSearcher() const;
 
@@ -138,6 +138,12 @@ class CudaParticleSystemData3 {
     //! Copies from other particle system data.
     CudaParticleSystemData3& operator=(const CudaParticleSystemData3& other);
 
+ protected:
+    CudaPointHashGridSearcher3Ptr _neighborSearcher;
+    CudaArray1<uint32_t> _neighborStarts;
+    CudaArray1<uint32_t> _neighborEnds;
+    CudaArray1<uint32_t> _neighborLists;
+
  private:
     size_t _numberOfParticles = 0;
     size_t _positionIdx;
@@ -146,11 +152,6 @@ class CudaParticleSystemData3 {
     std::vector<IntData> _intDataList;
     std::vector<FloatData> _floatDataList;
     std::vector<VectorData> _vectorDataList;
-
-    CudaPointHashGridSearcher3Ptr _neighborSearcher;
-    CudaArray1<size_t> _neighborStarts;
-    CudaArray1<size_t> _neighborEnds;
-    CudaArray1<size_t> _neighborLists;
 };
 
 //! Shared pointer type of CudaParticleSystemData3.

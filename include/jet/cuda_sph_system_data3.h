@@ -85,6 +85,12 @@ class CudaSphSystemData3 : public CudaParticleSystemData3 {
 
     float mass() const;
 
+    //! Builds neighbor searcher with kernel radius.
+    void buildNeighborSearcher();
+
+    //! Builds neighbor lists with kernel radius and update densities.
+    void buildNeighborListsAndUpdateDensities();
+
     //! Copies from other SPH system data.
     void set(const CudaSphSystemData3& other);
 

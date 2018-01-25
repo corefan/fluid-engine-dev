@@ -16,7 +16,7 @@
 using namespace jet;
 using namespace experimental;
 
-constexpr size_t kDefaultHashGridResolution = 64;
+constexpr uint32_t kDefaultHashGridResolution = 64;
 
 CudaParticleSystemData3::CudaParticleSystemData3()
     : CudaParticleSystemData3(0) {}
@@ -180,15 +180,15 @@ void CudaParticleSystemData3::addParticles(
     }
 }
 
-const CudaArrayView1<size_t> CudaParticleSystemData3::neighborStarts() const {
+const CudaArrayView1<uint32_t> CudaParticleSystemData3::neighborStarts() const {
     return _neighborStarts.view();
 }
 
-const CudaArrayView1<size_t> CudaParticleSystemData3::neighborEnds() const {
+const CudaArrayView1<uint32_t> CudaParticleSystemData3::neighborEnds() const {
     return _neighborEnds.view();
 }
 
-const CudaArrayView1<size_t> CudaParticleSystemData3::neighborLists() const {
+const CudaArrayView1<uint32_t> CudaParticleSystemData3::neighborLists() const {
     return _neighborLists.view();
 }
 
@@ -198,9 +198,11 @@ const CudaPointHashGridSearcher3* CudaParticleSystemData3::neighborSearcher()
 }
 
 void CudaParticleSystemData3::buildNeighborSearcher(float maxSearchRadius) {
-    _neighborSearcher = std::make_shared<CudaPointHashGridSearcher3>(
-        kDefaultHashGridResolution, kDefaultHashGridResolution,
-        kDefaultHashGridResolution, 2.0f * maxSearchRadius);
+    if (_neighborSearcher == nullptr) {
+        _neighborSearcher = std::make_shared<CudaPointHashGridSearcher3>(
+            kDefaultHashGridResolution, kDefaultHashGridResolution,
+            kDefaultHashGridResolution, 2.0f * maxSearchRadius);
+    }
     _neighborSearcher->build(positions());
 }
 
@@ -209,14 +211,13 @@ void CudaParticleSystemData3::buildNeighborLists(float maxSearchRadius) {
     _neighborEnds.resize(_numberOfParticles);
 
     auto neighborStarts = _neighborStarts.view();
-    float radius = static_cast<float>(maxSearchRadius);
 
     // Count nearby points
     thrust::for_each(
-        thrust::counting_iterator<size_t>(kZeroSize),
-        thrust::counting_iterator<size_t>(kZeroSize) + numberOfParticles(),
+        thrust::counting_iterator<size_t>(0),
+        thrust::counting_iterator<size_t>(0) + numberOfParticles(),
         ForEachNeighborFunc<NoOpFunc, CountNearbyPointsFunc>(
-            *_neighborSearcher, radius, positions().data(), NoOpFunc(),
+            *_neighborSearcher, maxSearchRadius, positions().data(), NoOpFunc(),
             CountNearbyPointsFunc(_neighborStarts.data())));
 
     // Make start/end point of neighbor list, and allocate neighbor list.
@@ -226,15 +227,15 @@ void CudaParticleSystemData3::buildNeighborLists(float maxSearchRadius) {
                       _neighborStarts.begin(), _neighborStarts.begin(),
                       thrust::minus<unsigned int>());
     size_t rbeginIdx = _neighborEnds.size() > 0 ? _neighborEnds.size() - 1 : 0;
-    size_t m = _neighborEnds[rbeginIdx];
+    uint32_t m = _neighborEnds[rbeginIdx];
     _neighborLists.resize(m, 0);
 
     // Build neighbor lists
     thrust::for_each(
-        thrust::counting_iterator<size_t>(kZeroSize),
-        thrust::counting_iterator<size_t>(kZeroSize) + numberOfParticles(),
+        thrust::counting_iterator<size_t>(0),
+        thrust::counting_iterator<size_t>(0) + numberOfParticles(),
         ForEachNeighborFunc<BuildNeighborListsFunc, NoOpFunc>(
-            *_neighborSearcher, radius, positions().data(),
+            *_neighborSearcher, maxSearchRadius, positions().data(),
             BuildNeighborListsFunc(_neighborStarts.data(), _neighborEnds.data(),
                                    _neighborLists.data()),
             NoOpFunc()));
