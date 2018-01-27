@@ -88,16 +88,8 @@ void CudaPointHashGridSearcher3::build(const CudaArrayView1<float4>& points) {
         return;
     }
 
-    _startIndexTable.resize(_resolution.x * _resolution.y * _resolution.z);
-    _endIndexTable.resize(_resolution.x * _resolution.y * _resolution.z);
     _keys.resize(numberOfPoints);
     _sortedIndices.resize(numberOfPoints);
-
-    // Initialize tables
-    cudaMemset(_startIndexTable.data(), 0xffffffff,
-               sizeof(uint32_t) * _startIndexTable.size());
-    cudaMemset(_endIndexTable.data(), 0xffffffff,
-               sizeof(uint32_t) * _endIndexTable.size());
 
     // Initialize indices array and generate hash key for each point
     auto countingBegin = thrust::counting_iterator<size_t>(0);
@@ -115,7 +107,6 @@ void CudaPointHashGridSearcher3::build(const CudaArrayView1<float4>& points) {
 
     // Now _points and _keys are sorted by points' hash key values.
     // Let's fill in start/end index table with _keys.
-
     // Assume that _keys array looks like:
     // [5|8|8|10|10|10]
     // Then _startIndexTable and _endIndexTable should be like:

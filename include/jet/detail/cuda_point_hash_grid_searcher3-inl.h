@@ -75,31 +75,21 @@ CudaPointHashGridSearcher3::HashUtils::getNearbyKeys(
 inline JET_CUDA_HOST_DEVICE int3
 CudaPointHashGridSearcher3::HashUtils::getBucketIndex(float4 position) const {
     int3 bucketIndex;
-    bucketIndex.x = static_cast<int>(floorf(position.x / _gridSpacing));
-    bucketIndex.y = static_cast<int>(floorf(position.y / _gridSpacing));
-    bucketIndex.z = static_cast<int>(floorf(position.z / _gridSpacing));
+    bucketIndex.x = (int)floorf(position.x / _gridSpacing);
+    bucketIndex.y = (int)floorf(position.y / _gridSpacing);
+    bucketIndex.z = (int)floorf(position.z / _gridSpacing);
     return bucketIndex;
 }
 
 inline JET_CUDA_HOST_DEVICE uint32_t
 CudaPointHashGridSearcher3::HashUtils::getHashKeyFromBucketIndex(
     int3 bucketIndex) const {
-    int3 wrappedIndex = bucketIndex;
-    wrappedIndex.x = bucketIndex.x % _resolution.x;
-    wrappedIndex.y = bucketIndex.y % _resolution.y;
-    wrappedIndex.z = bucketIndex.z % _resolution.z;
-    if (wrappedIndex.x < 0) {
-        wrappedIndex.x += _resolution.x;
-    }
-    if (wrappedIndex.y < 0) {
-        wrappedIndex.y += _resolution.y;
-    }
-    if (wrappedIndex.z < 0) {
-        wrappedIndex.z += _resolution.z;
-    }
-    return static_cast<uint32_t>(
-        (wrappedIndex.z * _resolution.y + wrappedIndex.y) * _resolution.x +
-        wrappedIndex.x);
+    // Assumes _resolution is power of two
+    bucketIndex.x = bucketIndex.x & (_resolution.x - 1);
+    bucketIndex.y = bucketIndex.y & (_resolution.y - 1);
+    bucketIndex.z = bucketIndex.z & (_resolution.z - 1);
+    return bucketIndex.z * _resolution.y * _resolution.x +
+           bucketIndex.y * _resolution.x + bucketIndex.x;
 }
 
 inline JET_CUDA_HOST_DEVICE uint32_t

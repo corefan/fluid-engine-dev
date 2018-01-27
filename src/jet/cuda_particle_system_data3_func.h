@@ -52,13 +52,12 @@ class ForEachNeighborFunc {
 
             for (uint32_t jj = start; jj < end; ++jj) {
                 uint32_t j = _sortedIndices[jj];
-                // float4 r = _points[j] - origin;
-                // float distanceSquared = lengthSquared(r);
-                // if (i != j && distanceSquared <= queryRadiusSquared) {
-                //     _neighborCallback(i, j, cnt, distanceSquared);
-                // ++cnt;
-                // }
-                cnt += j;
+                float4 r = _points[j] - origin;
+                float distanceSquared = lengthSquared(r);
+                if (i != j && distanceSquared <= queryRadiusSquared) {
+                    _neighborCallback(i, j, cnt, distanceSquared);
+                    ++cnt;
+                }
             }
         }
 

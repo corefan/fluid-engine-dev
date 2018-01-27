@@ -114,25 +114,25 @@ void CudaSphSystemData3::buildNeighborListsAndUpdateDensities() {
             CountNearbyPointsFunc(_neighborStarts.data())));
 
     // Make start/end point of neighbor list, and allocate neighbor list.
-    // thrust::inclusive_scan(_neighborStarts.begin(), _neighborStarts.end(),
-    //                        _neighborEnds.begin());
-    // thrust::transform(_neighborEnds.begin(), _neighborEnds.end(),
-    //                   _neighborStarts.begin(), _neighborStarts.begin(),
-    //                   thrust::minus<uint32_t>());
-    // size_t rbeginIdx = _neighborEnds.size() > 0 ? _neighborEnds.size() - 1 :
-    // 0; uint32_t m = _neighborEnds[rbeginIdx]; _neighborLists.resize(m, 0);
+    thrust::inclusive_scan(_neighborStarts.begin(), _neighborStarts.end(),
+                           _neighborEnds.begin());
+    thrust::transform(_neighborEnds.begin(), _neighborEnds.end(),
+                      _neighborStarts.begin(), _neighborStarts.begin(),
+                      thrust::minus<uint32_t>());
+    size_t rbeginIdx = _neighborEnds.size() > 0 ? _neighborEnds.size() - 1 : 0;
+    uint32_t m = _neighborEnds[rbeginIdx];
+    _neighborLists.resize(m, 0);
 
     // Build neighbor lists and update densities
-    // thrust::for_each(
-    //     thrust::counting_iterator<size_t>(0),
-    //     thrust::counting_iterator<size_t>(0) + numberOfParticles(),
-    //     ForEachNeighborFunc<BuildNeighborListsAndUpdateDensitiesFunc,
-    //     NoOpFunc>(
-    //         *_neighborSearcher, _kernelRadius, positions().data(),
-    //         BuildNeighborListsAndUpdateDensitiesFunc(
-    //             _neighborStarts.data(), _neighborEnds.data(), _kernelRadius,
-    //             _mass, _neighborLists.data(), densities().data()),
-    //         NoOpFunc()));
+    thrust::for_each(
+        thrust::counting_iterator<size_t>(0),
+        thrust::counting_iterator<size_t>(0) + numberOfParticles(),
+        ForEachNeighborFunc<BuildNeighborListsAndUpdateDensitiesFunc, NoOpFunc>(
+            *_neighborSearcher, _kernelRadius, positions().data(),
+            BuildNeighborListsAndUpdateDensitiesFunc(
+                _neighborStarts.data(), _neighborEnds.data(), _kernelRadius,
+                _mass, _neighborLists.data(), densities().data()),
+            NoOpFunc()));
 }
 
 void CudaSphSystemData3::set(const CudaSphSystemData3& other) {

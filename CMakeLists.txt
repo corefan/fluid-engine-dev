@@ -91,6 +91,9 @@ if (USE_CUDA)
     add_definitions(-DJET_USE_CUDA)
     include_directories(${CUDA_INCLUDE_DIRS})
 
+    # Temp
+    include_directories($ENV{NVCUDASAMPLES_ROOT}/common/inc)
+
     if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
         set(DEFAULT_COMPILE_OPTIONS ${DEFAULT_COMPILE_OPTIONS}
             /wd4515 # -> disable warning: [Thrust issue] 'detail': namespace uses itself

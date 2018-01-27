@@ -71,19 +71,21 @@ void CudaSphSolver3Example::onSetup(GlfwWindow* window) {
     renderer->setBackgroundColor(Color{0, 0, 0, 1});
 
     // Setup solver
-    const float targetSpacing = 1.0f / 32.0f;
+    const float targetSpacing = 1.0f / 50.0f;
     _solver = jet::experimental::CudaSphSolver3::builder().makeShared();
     _solver->setDragCoefficient(0.0f);
     _solver->setRestitutionCoefficient(1.0f);
     _solver->setViscosityCoefficient(0.1f);
     _solver->setPseudoViscosityCoefficient(10.0f);
+    _solver->setIsUsingFixedSubTimeSteps(true);
+    _solver->setNumberOfFixedSubTimeSteps(1);
 
     auto particles = _solver->particleSystemData();
     particles->setTargetSpacing(targetSpacing);
-    particles->setRelativeKernelRadius(1.0f);
+    particles->setRelativeKernelRadius(1.8f);
 
     // Seed particles
-    BoundingBox3D vol(Vector3D(), Vector3D(1, 0.5, 1));
+    BoundingBox3D vol(Vector3D(), Vector3D(0.5, 0.5, 0.5));
     vol.expand(-targetSpacing);
     Array1<Vector3D> rawPoints;
     GridPointGenerator3 generator;

@@ -6,7 +6,6 @@
 
 #include "cuda_particle_system_solver3_example.h"
 #include "cuda_sph_solver3_example.h"
-#include "sdk_sample_example.h"
 
 #include <imgui/imgui.h>
 #include <imgui/imgui_impl_glfw_gl3.h>
@@ -97,10 +96,8 @@ int main(int, const char**) {
     ImGui::SetupImGuiStyle(true, 0.75f);
 
     // Setup tests
-    sTests.push_back(std::make_shared<SdkSampleExample>(
-        Frame(0, 1.0 / 1000.0)));
-    sTests.push_back(std::make_shared<CudaSphSolver3Example>(
-        Frame(0, 1.0 / 1000.0)));
+    sTests.push_back(
+        std::make_shared<CudaSphSolver3Example>(Frame(0, 1.0 / 1000.0)));
     sTests.push_back(std::make_shared<CudaParticleSystemSolver3Example>(
         Frame(0, 1.0 / 1000.0)));
     sTests[sCurrentTestIdx]->setup(window.get());

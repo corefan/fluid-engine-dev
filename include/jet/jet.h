@@ -142,6 +142,7 @@
 #include <jet/intersection_query_engine3.h>
 #include <jet/iterative_level_set_solver2.h>
 #include <jet/iterative_level_set_solver3.h>
+#include <jet/jet.h>
 #include <jet/kdtree.h>
 #include <jet/level_set_liquid_solver2.h>
 #include <jet/level_set_liquid_solver3.h>
